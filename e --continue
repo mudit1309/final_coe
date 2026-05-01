@@ -1,0 +1,15 @@
+[33m8145660[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mclaude/expand-admission-cards-guGW4[m[33m, [m[1;31morigin/claude/expand-admission-cards-guGW4[m[33m)[m HEAD@{0}: checkout: moving from 5791bff43dddfd275152505288798ee9f4797aa7 to claude/expand-admission-cards-guGW4
+[33m5791bff[m HEAD@{1}: commit: merge update
+[33mc6f78a3[m[33m ([m[1;31morigin/claude/vizlogic-sales-automation-FN3x4[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{2}: pull origin claude/vizlogic-sales-automation-FN3x4 --rebase (start): checkout c6f78a379ad2be48fb2dc89a9e518e91d3b238ca
+[33m24dab3e[m[33m ([m[1;32mclaude/vizlogic-sales-automation-FN3x4[m[33m)[m HEAD@{3}: commit: merge update
+[33m2fab2e0[m HEAD@{4}: commit (merge): merge update
+[33m3745b48[m HEAD@{5}: commit (merge): merge update
+[33mdb3d637[m HEAD@{6}: commit (merge): Resolve merge conflict, accept remote changes
+[33m8394cf5[m HEAD@{7}: commit (merge): merge update
+[33mbd2473a[m HEAD@{8}: commit: save current work
+[33m853e4cd[m HEAD@{9}: commit: Add hero image
+[33m4605773[m HEAD@{10}: commit (merge): Resolve merge conflict, accept remote Nav.tsx with logo
+[33m27c15c7[m HEAD@{11}: commit: save current work
+[33mc8e7bc7[m HEAD@{12}: pull: Fast-forward
+[33m3a58394[m HEAD@{13}: pull origin claude/vizlogic-sales-automation-FN3x4: Fast-forward
+[33m799b771[m HEAD@{14}: clone: from https://github.com/mudit1309/microsite.git
