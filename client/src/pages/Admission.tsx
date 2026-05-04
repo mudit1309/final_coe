@@ -9,8 +9,7 @@ const steps = [
     summary: "Transparent pricing with Full Upfront",
     body: `Choose the payment plan that suits you best:
 • Full Upfront — ₹30,000 (priority batch allocation)
-
-Merit-based scholarships up to 40% for top performers. Need-based waivers up to 50% available based on family income.`,
+    Currently no scholarships are being offered.`,
     cta: { label: "View Full Fee Details →", to: "/fees" },
   },
   {

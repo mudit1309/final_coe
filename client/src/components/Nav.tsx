@@ -8,7 +8,7 @@ const links = [
   { to: "/career-path", label: "Career Path" },
   { to: "/admission", label: "Admission" },
   { to: "/fees", label: "Fees" },
-  { to: "/oem-partners", label: "OEM & Partners" },
+  { to: "/oem-partners", label: "OEM" },
   { to: "/my-application", label: "My Application" },
 ];
 
