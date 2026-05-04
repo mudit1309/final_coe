@@ -30,6 +30,7 @@ adminRouter.post("/logout", (_req, res) => {
 // --- Enrollments ---
 adminRouter.get("/enrollments", requireAdmin, (_req, res) => {
   res.json({ enrollments: enrollments.list() });
+  console.log("ENROLLMENTS API HIT");
 });
 
 adminRouter.patch("/enrollments/:id", requireAdmin, async (req, res) => {
