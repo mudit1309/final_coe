@@ -79,13 +79,13 @@ export default function FeesPage() {
               <div className="card">
                 <div className="text-sm font-semibold text-accent-600">Merit-based</div>
                 <p className="mt-1 text-sm text-slate-600">
-                  Based on entrance test performance. Up to 40% fee waiver for top candidates.
+                  Currently no scholarships are being offered.
                 </p>
               </div>
               <div className="card">
                 <div className="text-sm font-semibold text-accent-600">Need-based</div>
                 <p className="mt-1 text-sm text-slate-600">
-                  Based on candidate family income and a short essay. Up to 50% fee waiver for selected candidates.
+                  Currently no scholarships are being offered
                 </p>
               </div>
             </div>
