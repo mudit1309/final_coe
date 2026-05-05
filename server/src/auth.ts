@@ -57,7 +57,7 @@ export function clearAdminCookie(res: Response) {
 }
 
 export function validateAdminPassword(pw: string): boolean {
-  const expected = process.env.ADMIN_PASSWORD || "vizlogic-admin-2026";
+  const expected = process.env.ADMIN_PASSWORD || "Vizshila@123";
   if (!pw || pw.length !== expected.length) return false;
   return crypto.timingSafeEqual(Buffer.from(pw), Buffer.from(expected));
 }

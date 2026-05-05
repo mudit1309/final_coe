@@ -30,7 +30,6 @@ adminRouter.post("/logout", (_req, res) => {
 // --- Enrollments ---
 adminRouter.get("/enrollments", requireAdmin, (_req, res) => {
   res.json({ enrollments: enrollments.list() });
-  console.log("ENROLLMENTS API HIT");
 });
 
 adminRouter.patch("/enrollments/:id", requireAdmin, async (req, res) => {
@@ -80,6 +79,36 @@ adminRouter.delete("/enrollments/:id", requireAdmin, (req, res) => {
   const ok = enrollments.delete(id);
   if (!ok) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
+});
+
+// enrollments GET
+adminRouter.get("/enrollments", requireAdmin, async (_req, res) => {
+  try {
+    res.json({ enrollments: await enrollments.list() });
+  } catch (err) {
+    console.error("[admin] enrollments.list failed:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// email-settings GET
+adminRouter.get("/email-settings", requireAdmin, async (_req, res) => {
+  try {
+    res.json({ settings: await emailSettings.get() });
+  } catch (err) {
+    console.error("[admin] emailSettings.get failed:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// partners GET
+adminRouter.get("/partners", requireAdmin, async (_req, res) => {
+  try {
+    res.json({ partners: await partners.list() });
+  } catch (err) {
+    console.error("[admin] partners.list failed:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // --- Email Settings ---

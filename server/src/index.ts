@@ -70,7 +70,9 @@ app.use(
 );
 
 export { app };
-
+process.on("unhandledRejection", (reason) => {
+  console.error("[fatal] Unhandled rejection:", reason);
+});
 if (!process.env.NETLIFY) {
   const PORT = Number(process.env.PORT) || 3001;
   const clientDist = path.resolve(__dirname, "..", "..", "client", "dist");
