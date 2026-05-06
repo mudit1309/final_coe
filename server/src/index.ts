@@ -9,10 +9,22 @@ import { otpRouter } from "./routes/otp";
 import { guestLectureRouter } from "./routes/guest_lecture";
 import { feeLookupRouter } from "./routes/fee_lookup";
 import { candidateRouter } from "./routes/candidate";
-import { emailSettings, partners } from "./db";
+import { connectDB, emailSettings, partners } from "./db";
 
 const app = express();
 app.disable("x-powered-by");
+
+// CORS — allow requests from the Netlify frontend
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "http://localhost:5173";
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+  next();
+});
+
 app.use(express.json({ limit: "100kb" }));
 app.use(cookieParser());
 
@@ -28,8 +40,8 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Public: batch start date for the Admission page banner
-app.get("/api/batch-date", async (_req, res) => {
-  const cfg = await emailSettings.get();
+app.get("/api/batch-date", (_req, res) => {
+  const cfg = emailSettings.get();
   const raw = cfg.training_start_date;
   let formatted: string | null = null;
   if (raw) {
@@ -45,8 +57,8 @@ app.get("/api/batch-date", async (_req, res) => {
 });
 
 // Public: OEM & Partners list
-app.get("/api/partners", async (_req, res) => {
-  res.json({ partners: await partners.list() });
+app.get("/api/partners", (_req, res) => {
+  res.json({ partners: partners.list() });
 });
 
 app.use("/api/otp", otpRouter);
@@ -57,22 +69,17 @@ app.use("/api/guest-lecture", guestLectureRouter);
 app.use("/api/fee-lookup", feeLookupRouter);
 app.use("/api/candidate", candidateRouter);
 
-app.use(
-  (
-    err: unknown,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction,
-  ) => {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  },
-);
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal server error" });
+});
 
 export { app };
+
 process.on("unhandledRejection", (reason) => {
   console.error("[fatal] Unhandled rejection:", reason);
 });
+
 if (!process.env.NETLIFY) {
   const PORT = Number(process.env.PORT) || 3001;
   const clientDist = path.resolve(__dirname, "..", "..", "client", "dist");
@@ -82,7 +89,14 @@ if (!process.env.NETLIFY) {
       res.sendFile(path.join(clientDist, "index.html"));
     });
   }
-  app.listen(PORT, () => {
-    console.log(`→ Vizlogic API listening on http://localhost:${PORT}`);
-  });
+  connectDB()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`→ Vizlogic API listening on http://localhost:${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error("[db] Failed to connect to MongoDB:", err);
+      process.exit(1);
+    });
 }
