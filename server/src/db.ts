@@ -125,6 +125,10 @@ async function getDb(): Promise<Db> {
   return _db;
 }
 
+export async function connectDB(): Promise<void> {
+  await getDb();
+}
+
 async function nextSeq(name: string): Promise<number> {
   const db = await getDb();
   const result = await db.collection("counters").findOneAndUpdate(
