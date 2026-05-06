@@ -6,7 +6,7 @@ export const guestLectureRouter = Router();
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phoneRe = /^[+\d][\d\s\-()]{6,}$/;
 
-guestLectureRouter.post("/", (req, res) => {
+guestLectureRouter.post("/", async (req, res) => {
   const body = req.body || {};
   const name = String(body.name || "").trim();
   const phone = String(body.phone || "").trim();
@@ -27,6 +27,6 @@ guestLectureRouter.post("/", (req, res) => {
     return res.status(400).json({ error: "Please provide your city / location." });
   }
 
-  const row = guestLectures.create({ name, phone, email, place, topic });
+  const row = await guestLectures.create({ name, phone, email, place, topic });
   res.status(201).json({ ok: true, id: row.id });
 });

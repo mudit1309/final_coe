@@ -3,13 +3,13 @@ import { enrollments } from "../db";
 
 export const feeLookupRouter = Router();
 
-feeLookupRouter.post("/", (req, res) => {
+feeLookupRouter.post("/", async (req, res) => {
   const uniqueId = String(req.body?.unique_id || "").trim().toUpperCase();
   if (!uniqueId || uniqueId.length < 3) {
     return res.status(400).json({ error: "Please enter your Application ID (e.g. VZ000001)." });
   }
 
-  const enrollment = enrollments.findByUniqueId(uniqueId);
+  const enrollment = await enrollments.findByUniqueId(uniqueId);
   if (!enrollment) {
     return res.status(404).json({ error: "Application ID not found. Please check and try again." });
   }

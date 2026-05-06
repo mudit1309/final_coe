@@ -1,5 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
+import { MongoClient, Db } from "mongodb";
 
 export type Enrollment = {
   id: number;
@@ -11,11 +10,9 @@ export type Enrollment = {
   course: string;
   plan: string | null;
   notes: string | null;
-  // Application fee (₹100 paid at form submission)
   app_fee_ref: string | null;
   app_fee_date: string | null;
   app_fee_status: "pending" | "verified" | "rejected";
-  // Course fee (paid after selection)
   payment_status: "pending" | "verified" | "rejected";
   payment_ref: string | null;
   payment_date: string | null;
@@ -71,17 +68,6 @@ export type Partner = {
   created_at: string;
 };
 
-type DBShape = {
-  next_id: number;
-  next_gl_id: number;
-  next_partner_id: number;
-  enrollments: Enrollment[];
-  email_settings: EmailSettings;
-  mailing_list: MailingListEntry[];
-  guest_lectures: GuestLecture[];
-  partners: Partner[];
-};
-
 const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   smtp_host: "",
   smtp_port: 587,
@@ -125,62 +111,28 @@ Best regards,
 Vizlogic COE Team`,
 };
 
-const DEFAULT: DBShape = {
-  next_id: 1,
-  next_gl_id: 1,
-  next_partner_id: 1,
-  enrollments: [],
-  email_settings: { ...DEFAULT_EMAIL_SETTINGS },
-  mailing_list: [],
-  guest_lectures: [],
-  partners: [],
-};
+let _client: MongoClient | null = null;
+let _db: Db | null = null;
 
-function resolveDBPath(): string {
-  if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
-  if (process.env.NETLIFY) return path.join("/tmp", "vizlogic.json");
-  return path.join(process.cwd(), "data", "vizlogic.json");
+async function getDb(): Promise<Db> {
+  if (_db) return _db;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("MONGODB_URI environment variable is not set");
+  _client = new MongoClient(uri);
+  await _client.connect();
+  _db = _client.db();
+  console.log("[db] Connected to MongoDB");
+  return _db;
 }
 
-let _path: string | null = null;
-let _state: DBShape | null = null;
-
-function load(): DBShape {
-  if (_state) return _state;
-  _path = resolveDBPath();
-  const dir = path.dirname(_path);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-  if (fs.existsSync(_path)) {
-    try {
-      const raw = fs.readFileSync(_path, "utf8");
-      const parsed = raw.trim() ? JSON.parse(raw) : { ...DEFAULT };
-      _state = {
-        next_id: Number(parsed.next_id) || 1,
-        next_gl_id: Number(parsed.next_gl_id) || 1,
-        next_partner_id: Number(parsed.next_partner_id) || 1,
-        enrollments: Array.isArray(parsed.enrollments) ? parsed.enrollments : [],
-        email_settings: { ...DEFAULT_EMAIL_SETTINGS, ...(parsed.email_settings || {}) },
-        mailing_list: Array.isArray(parsed.mailing_list) ? parsed.mailing_list : [],
-        guest_lectures: Array.isArray(parsed.guest_lectures) ? parsed.guest_lectures : [],
-        partners: Array.isArray(parsed.partners) ? parsed.partners : [],
-      };
-    } catch (err) {
-      console.error(`[db] Failed to parse ${_path} — starting from empty state. Error:`, err);
-      _state = { ...DEFAULT };
-    }
-  } else {
-    _state = { ...DEFAULT };
-    persist();
-  }
-  return _state!;
-}
-
-function persist() {
-  if (!_path || !_state) return;
-  const tmp = _path + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(_state, null, 2), "utf8");
-  fs.renameSync(tmp, _path);
+async function nextSeq(name: string): Promise<number> {
+  const db = await getDb();
+  const result = await db.collection("counters").findOneAndUpdate(
+    { _id: name as unknown as object },
+    { $inc: { seq: 1 } },
+    { upsert: true, returnDocument: "after" },
+  );
+  return (result as unknown as { seq: number }).seq as number;
 }
 
 function nowISO(): string {
@@ -200,9 +152,9 @@ export type EnrollmentInput = {
 };
 
 export const enrollments = {
-  create(input: EnrollmentInput): Enrollment {
-    const state = load();
-    const id = state.next_id++;
+  async create(input: EnrollmentInput): Promise<Enrollment> {
+    const db = await getDb();
+    const id = await nextSeq("enrollment_id");
     const unique_id = "VZ" + String(id).padStart(6, "0");
     const ts = nowISO();
     const row: Enrollment = {
@@ -225,112 +177,121 @@ export const enrollments = {
       created_at: ts,
       updated_at: ts,
     };
-    state.enrollments.push(row);
-    persist();
+    await db.collection<Enrollment>("enrollments").insertOne(row as any);
     return row;
   },
 
-  list(): Enrollment[] {
-    const state = load();
-    return state.enrollments
-      .slice()
-      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-      .slice(0, 500);
+  async list(): Promise<Enrollment[]> {
+    const db = await getDb();
+    return db
+      .collection<Enrollment>("enrollments")
+      .find({}, { projection: { _id: 0 } })
+      .sort({ created_at: -1 })
+      .limit(500)
+      .toArray() as unknown as Enrollment[];
   },
 
-  findById(id: number): Enrollment | null {
-    const state = load();
-    return state.enrollments.find((e) => e.id === id) || null;
+  async findById(id: number): Promise<Enrollment | null> {
+    const db = await getDb();
+    return db
+      .collection<Enrollment>("enrollments")
+      .findOne({ id }, { projection: { _id: 0 } }) as unknown as Enrollment | null;
   },
 
-  findByUniqueId(uniqueId: string): Enrollment | null {
-    const state = load();
-    const upper = uniqueId.toUpperCase();
-    return state.enrollments.find((e) => e.unique_id === upper) || null;
+  async findByUniqueId(uniqueId: string): Promise<Enrollment | null> {
+    const db = await getDb();
+    return db
+      .collection<Enrollment>("enrollments")
+      .findOne({ unique_id: uniqueId.toUpperCase() }, { projection: { _id: 0 } }) as unknown as Enrollment | null;
   },
 
-  findByPhone(phone: string): Enrollment | null {
-    const state = load();
+  async findByPhone(phone: string): Promise<Enrollment | null> {
+    const db = await getDb();
     const normalized = phone.trim().replace(/\s+/g, "");
-    return (
-      state.enrollments
-        .slice()
-        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-        .find((e) => e.phone.replace(/\s+/g, "") === normalized) || null
+    const all = await db
+      .collection<Enrollment>("enrollments")
+      .find({}, { projection: { _id: 0 } })
+      .sort({ created_at: -1 })
+      .toArray() as unknown as Enrollment[];
+    return all.find((e) => e.phone.replace(/\s+/g, "") === normalized) || null;
+  },
+
+  async recordPaymentRef(id: number, paymentRef: string, paymentDate?: string): Promise<boolean> {
+    const db = await getDb();
+    const result = await db.collection("enrollments").updateOne(
+      { id },
+      {
+        $set: {
+          payment_ref: paymentRef,
+          payment_date: paymentDate || null,
+          payment_status: "pending",
+          updated_at: nowISO(),
+        },
+      },
     );
+    return result.matchedCount > 0;
   },
 
-  recordPaymentRef(id: number, paymentRef: string, paymentDate?: string): boolean {
-    const state = load();
-    const row = state.enrollments.find((e) => e.id === id);
-    if (!row) return false;
-    row.payment_ref = paymentRef;
-    row.payment_date = paymentDate || null;
-    row.payment_status = "pending";
-    row.updated_at = nowISO();
-    persist();
-    return true;
+  async update(id: number, patch: Partial<Enrollment>): Promise<boolean> {
+    const db = await getDb();
+    const set: Record<string, unknown> = { updated_at: nowISO() };
+    if (patch.payment_status !== undefined) set.payment_status = patch.payment_status;
+    if (patch.application_status !== undefined) set.application_status = patch.application_status;
+    if (patch.app_fee_status !== undefined) set.app_fee_status = patch.app_fee_status;
+    if (patch.plan !== undefined) set.plan = patch.plan;
+    const result = await db.collection("enrollments").updateOne({ id }, { $set: set });
+    return result.matchedCount > 0;
   },
 
-  update(id: number, patch: Partial<Enrollment>): boolean {
-    const state = load();
-    const row = state.enrollments.find((e) => e.id === id);
-    if (!row) return false;
-    if (patch.payment_status !== undefined) row.payment_status = patch.payment_status;
-    if (patch.application_status !== undefined) row.application_status = patch.application_status;
-    if (patch.app_fee_status !== undefined) row.app_fee_status = patch.app_fee_status;
-    if (patch.plan !== undefined) row.plan = patch.plan;
-    row.updated_at = nowISO();
-    persist();
-    return true;
-  },
-
-  delete(id: number): boolean {
-    const state = load();
-    const before = state.enrollments.length;
-    state.enrollments = state.enrollments.filter((e) => e.id !== id);
-    const changed = state.enrollments.length !== before;
-    if (changed) persist();
-    return changed;
+  async delete(id: number): Promise<boolean> {
+    const db = await getDb();
+    const result = await db.collection("enrollments").deleteOne({ id });
+    return result.deletedCount > 0;
   },
 };
 
 export const mailingList = {
-  list(): MailingListEntry[] {
-    return load().mailing_list.slice();
+  async list(): Promise<MailingListEntry[]> {
+    const db = await getDb();
+    return db
+      .collection<MailingListEntry>("mailing_list")
+      .find({}, { projection: { _id: 0 } })
+      .toArray() as unknown as MailingListEntry[];
   },
 
-  add(email: string, name: string, source: "auto" | "manual"): boolean {
-    const state = load();
+  async add(email: string, name: string, source: "auto" | "manual"): Promise<boolean> {
+    const db = await getDb();
     const lower = email.toLowerCase();
-    if (state.mailing_list.some((e) => e.email.toLowerCase() === lower)) return false;
-    state.mailing_list.push({ email: lower, name, source, added_at: nowISO() });
-    persist();
+    const existing = await db.collection("mailing_list").findOne({ email: lower });
+    if (existing) return false;
+    await db.collection("mailing_list").insertOne({ email: lower, name, source, added_at: nowISO() });
     return true;
   },
 
-  remove(email: string): boolean {
-    const state = load();
-    const lower = email.toLowerCase();
-    const before = state.mailing_list.length;
-    state.mailing_list = state.mailing_list.filter((e) => e.email.toLowerCase() !== lower);
-    const changed = state.mailing_list.length !== before;
-    if (changed) persist();
-    return changed;
+  async remove(email: string): Promise<boolean> {
+    const db = await getDb();
+    const result = await db.collection("mailing_list").deleteOne({ email: email.toLowerCase() });
+    return result.deletedCount > 0;
   },
 };
 
 export const emailSettings = {
-  get(): EmailSettings {
-    const state = load();
-    return { ...state.email_settings };
+  async get(): Promise<EmailSettings> {
+    const db = await getDb();
+    const doc = await db.collection("email_settings").findOne({ _id: "settings" as unknown as object });
+    if (!doc) return { ...DEFAULT_EMAIL_SETTINGS };
+    const { _id, ...rest } = doc as any;
+    return { ...DEFAULT_EMAIL_SETTINGS, ...rest } as EmailSettings;
   },
 
-  update(patch: Partial<EmailSettings>): EmailSettings {
-    const state = load();
-    Object.assign(state.email_settings, patch);
-    persist();
-    return { ...state.email_settings };
+  async update(patch: Partial<EmailSettings>): Promise<EmailSettings> {
+    const db = await getDb();
+    await db.collection("email_settings").updateOne(
+      { _id: "settings" as unknown as object },
+      { $set: patch },
+      { upsert: true },
+    );
+    return this.get();
   },
 };
 
@@ -343,34 +304,27 @@ export type GuestLectureInput = {
 };
 
 export const guestLectures = {
-  create(input: GuestLectureInput): GuestLecture {
-    const state = load();
-    const id = state.next_gl_id++;
-    const row: GuestLecture = {
-      id,
-      name: input.name,
-      phone: input.phone,
-      email: input.email,
-      place: input.place,
-      topic: input.topic,
-      created_at: nowISO(),
-    };
-    state.guest_lectures.push(row);
-    persist();
+  async create(input: GuestLectureInput): Promise<GuestLecture> {
+    const db = await getDb();
+    const id = await nextSeq("guest_lecture_id");
+    const row: GuestLecture = { id, ...input, created_at: nowISO() };
+    await db.collection("guest_lectures").insertOne(row as any);
     return row;
   },
 
-  list(): GuestLecture[] {
-    return load().guest_lectures.slice().sort((a, b) => b.id - a.id);
+  async list(): Promise<GuestLecture[]> {
+    const db = await getDb();
+    return db
+      .collection<GuestLecture>("guest_lectures")
+      .find({}, { projection: { _id: 0 } })
+      .sort({ id: -1 })
+      .toArray() as unknown as GuestLecture[];
   },
 
-  delete(id: number): boolean {
-    const state = load();
-    const before = state.guest_lectures.length;
-    state.guest_lectures = state.guest_lectures.filter((g) => g.id !== id);
-    const changed = state.guest_lectures.length !== before;
-    if (changed) persist();
-    return changed;
+  async delete(id: number): Promise<boolean> {
+    const db = await getDb();
+    const result = await db.collection("guest_lectures").deleteOne({ id });
+    return result.deletedCount > 0;
   },
 };
 
@@ -384,34 +338,32 @@ export type PartnerInput = {
 };
 
 export const partners = {
-  list(): Partner[] {
-    return load().partners.slice().sort((a, b) => a.display_order - b.display_order);
+  async list(): Promise<Partner[]> {
+    const db = await getDb();
+    return db
+      .collection<Partner>("partners")
+      .find({}, { projection: { _id: 0 } })
+      .sort({ display_order: 1 })
+      .toArray() as unknown as Partner[];
   },
 
-  create(input: PartnerInput): Partner {
-    const state = load();
-    const id = state.next_partner_id++;
+  async create(input: PartnerInput): Promise<Partner> {
+    const db = await getDb();
+    const id = await nextSeq("partner_id");
     const row: Partner = { id, ...input, created_at: nowISO() };
-    state.partners.push(row);
-    persist();
+    await db.collection("partners").insertOne(row as any);
     return row;
   },
 
-  update(id: number, patch: Partial<PartnerInput>): boolean {
-    const state = load();
-    const row = state.partners.find((p) => p.id === id);
-    if (!row) return false;
-    Object.assign(row, patch);
-    persist();
-    return true;
+  async update(id: number, patch: Partial<PartnerInput>): Promise<boolean> {
+    const db = await getDb();
+    const result = await db.collection("partners").updateOne({ id }, { $set: patch });
+    return result.matchedCount > 0;
   },
 
-  delete(id: number): boolean {
-    const state = load();
-    const before = state.partners.length;
-    state.partners = state.partners.filter((p) => p.id !== id);
-    const changed = state.partners.length !== before;
-    if (changed) persist();
-    return changed;
+  async delete(id: number): Promise<boolean> {
+    const db = await getDb();
+    const result = await db.collection("partners").deleteOne({ id });
+    return result.deletedCount > 0;
   },
 };

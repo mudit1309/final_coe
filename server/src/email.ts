@@ -1,15 +1,15 @@
 import nodemailer from "nodemailer";
 import { emailSettings, type Enrollment } from "./db";
 
-function createTransport() {
-  const cfg = emailSettings.get();
+async function createTransport() {
+  const cfg = await emailSettings.get();
   if (!cfg.smtp_host || !cfg.smtp_user || !cfg.smtp_pass) return null;
-  return nodemailer.createTransport({
+  return { transport: nodemailer.createTransport({
     host: cfg.smtp_host,
     port: cfg.smtp_port,
     secure: cfg.smtp_port === 465,
     auth: { user: cfg.smtp_user, pass: cfg.smtp_pass },
-  });
+  }), cfg };
 }
 
 function interpolate(template: string, vars: Record<string, string>): string {
@@ -17,12 +17,12 @@ function interpolate(template: string, vars: Record<string, string>): string {
 }
 
 export async function sendOTPEmail(to: string, otp: string): Promise<void> {
-  const transport = createTransport();
-  if (!transport) {
+  const result = await createTransport();
+  if (!result) {
     console.log(`[OTP-DEV] Email OTP for ${to}: ${otp}  (SMTP not configured — use this code in development)`);
     return;
   }
-  const cfg = emailSettings.get();
+  const { transport, cfg } = result;
   await transport.sendMail({
     from: `"Vizshila" <${cfg.smtp_user}>`,
     to,
@@ -42,12 +42,12 @@ export async function sendOTPEmail(to: string, otp: string): Promise<void> {
 }
 
 export async function sendSelectedEmail(enrollment: Enrollment): Promise<boolean> {
-  const transport = createTransport();
-  if (!transport) {
+  const result = await createTransport();
+  if (!result) {
     console.log("[email] SMTP not configured — skipping selected email");
     return false;
   }
-  const cfg = emailSettings.get();
+  const { transport, cfg } = result;
   const trainingDate = cfg.training_start_date;
   let daysUntil = "—";
   if (trainingDate) {
@@ -82,12 +82,12 @@ export async function sendSelectedEmail(enrollment: Enrollment): Promise<boolean
 }
 
 export async function sendRejectedEmail(enrollment: Enrollment): Promise<boolean> {
-  const transport = createTransport();
-  if (!transport) {
+  const result = await createTransport();
+  if (!result) {
     console.log("[email] SMTP not configured — skipping rejected email");
     return false;
   }
-  const cfg = emailSettings.get();
+  const { transport, cfg } = result;
   const vars: Record<string, string> = {
     name: enrollment.name,
     email: enrollment.email,

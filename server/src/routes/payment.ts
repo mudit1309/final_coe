@@ -3,7 +3,7 @@ import { enrollments } from "../db";
 
 export const paymentRouter = Router();
 
-paymentRouter.post("/", (req, res) => {
+paymentRouter.post("/", async (req, res) => {
   const body = req.body || {};
   const id = Number(body.id);
   const paymentRef = String(body.paymentRef || "").trim();
@@ -19,10 +19,10 @@ paymentRouter.post("/", (req, res) => {
     return res.status(400).json({ error: "Date of payment is required." });
   }
 
-  if (!enrollments.findById(id)) {
+  if (!(await enrollments.findById(id))) {
     return res.status(404).json({ error: "Enrollment not found." });
   }
 
-  enrollments.recordPaymentRef(id, paymentRef, paymentDate);
+  await enrollments.recordPaymentRef(id, paymentRef, paymentDate);
   res.json({ ok: true, status: "awaiting_verification" });
 });

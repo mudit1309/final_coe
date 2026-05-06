@@ -28,8 +28,8 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Public: batch start date for the Admission page banner
-app.get("/api/batch-date", (_req, res) => {
-  const cfg = emailSettings.get();
+app.get("/api/batch-date", async (_req, res) => {
+  const cfg = await emailSettings.get();
   const raw = cfg.training_start_date;
   let formatted: string | null = null;
   if (raw) {
@@ -45,8 +45,8 @@ app.get("/api/batch-date", (_req, res) => {
 });
 
 // Public: OEM & Partners list
-app.get("/api/partners", (_req, res) => {
-  res.json({ partners: partners.list() });
+app.get("/api/partners", async (_req, res) => {
+  res.json({ partners: await partners.list() });
 });
 
 app.use("/api/otp", otpRouter);

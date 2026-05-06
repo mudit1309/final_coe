@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { enrollments } from "../db";
+import { enrollments, type Enrollment } from "../db";
 import { createOTP, verifyOTP, issueToken, verifyToken } from "../otp";
 import { sendOTPEmail } from "../email";
 
@@ -19,21 +19,19 @@ async function sendSmsOtp(phone: string, code: string): Promise<void> {
   }
 }
 
-// Send phone OTP for candidate login
 candidateRouter.post("/send-otp", async (req, res) => {
   const phone = String(req.body?.phone || "").trim();
   if (!phoneRe.test(phone)) {
     return res.status(400).json({ error: "Please provide a valid phone number." });
   }
 
-  const enrollment = enrollments.findByPhone(phone);
+  const enrollment = await enrollments.findByPhone(phone);
   if (!enrollment) {
     return res.status(404).json({ error: "No application found with this phone number. Please apply first." });
   }
 
   const code = createOTP("phone", phone);
 
-  // Send SMS via 2Factor.in; fall back to email if SMS fails
   try {
     await sendSmsOtp(phone, code);
   } catch (smsErr) {
@@ -49,8 +47,7 @@ candidateRouter.post("/send-otp", async (req, res) => {
   res.json({ ok: true, message: "OTP sent to your registered phone number." });
 });
 
-// Verify OTP and return application status
-candidateRouter.post("/verify", (req, res) => {
+candidateRouter.post("/verify", async (req, res) => {
   const phone = String(req.body?.phone || "").trim();
   const code = String(req.body?.code || "").trim();
 
@@ -64,7 +61,7 @@ candidateRouter.post("/verify", (req, res) => {
     return res.status(400).json({ error: "Incorrect or expired OTP. Please try again." });
   }
 
-  const enrollment = enrollments.findByPhone(phone);
+  const enrollment = await enrollments.findByPhone(phone);
   if (!enrollment) {
     return res.status(404).json({ error: "Application not found." });
   }
@@ -73,8 +70,7 @@ candidateRouter.post("/verify", (req, res) => {
   res.json({ ok: true, token, enrollment: sanitize(enrollment) });
 });
 
-// Get status with token (for refreshing without re-OTP)
-candidateRouter.post("/status", (req, res) => {
+candidateRouter.post("/status", async (req, res) => {
   const phone = String(req.body?.phone || "").trim();
   const token = String(req.body?.token || "");
 
@@ -82,7 +78,7 @@ candidateRouter.post("/status", (req, res) => {
     return res.status(401).json({ error: "Session expired. Please login again." });
   }
 
-  const enrollment = enrollments.findByPhone(phone);
+  const enrollment = await enrollments.findByPhone(phone);
   if (!enrollment) {
     return res.status(404).json({ error: "Application not found." });
   }
@@ -90,8 +86,7 @@ candidateRouter.post("/status", (req, res) => {
   res.json({ ok: true, enrollment: sanitize(enrollment) });
 });
 
-function sanitize(e: ReturnType<typeof enrollments.findByPhone>) {
-  if (!e) return null;
+function sanitize(e: Enrollment) {
   return {
     unique_id: e.unique_id,
     name: e.name,

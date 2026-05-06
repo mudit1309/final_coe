@@ -28,8 +28,13 @@ adminRouter.post("/logout", (_req, res) => {
 });
 
 // --- Enrollments ---
-adminRouter.get("/enrollments", requireAdmin, (_req, res) => {
-  res.json({ enrollments: enrollments.list() });
+adminRouter.get("/enrollments", requireAdmin, async (_req, res) => {
+  try {
+    res.json({ enrollments: await enrollments.list() });
+  } catch (err) {
+    console.error("[admin] enrollments.list failed:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 adminRouter.patch("/enrollments/:id", requireAdmin, async (req, res) => {
@@ -52,18 +57,18 @@ adminRouter.patch("/enrollments/:id", requireAdmin, async (req, res) => {
   }
   if (Object.keys(patch).length === 0) return res.status(400).json({ error: "Nothing to update" });
 
-  const existing = enrollments.findById(id);
+  const existing = await enrollments.findById(id);
   if (!existing) return res.status(404).json({ error: "Not found" });
 
   const prevAppStatus = existing.application_status;
-  const ok = enrollments.update(id, patch);
+  const ok = await enrollments.update(id, patch);
   if (!ok) return res.status(404).json({ error: "Not found" });
 
   let emailSent = false;
   if (patch.application_status && patch.application_status !== prevAppStatus) {
-    const updated = enrollments.findById(id)!;
+    const updated = (await enrollments.findById(id))!;
     if (patch.application_status === "selected") {
-      mailingList.add(updated.email, updated.name, "auto");
+      await mailingList.add(updated.email, updated.name, "auto");
       emailSent = await sendSelectedEmail(updated);
     } else if (patch.application_status === "rejected") {
       emailSent = await sendRejectedEmail(updated);
@@ -73,25 +78,15 @@ adminRouter.patch("/enrollments/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true, email_sent: emailSent });
 });
 
-adminRouter.delete("/enrollments/:id", requireAdmin, (req, res) => {
+adminRouter.delete("/enrollments/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
-  const ok = enrollments.delete(id);
+  const ok = await enrollments.delete(id);
   if (!ok) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
 });
 
-// enrollments GET
-adminRouter.get("/enrollments", requireAdmin, async (_req, res) => {
-  try {
-    res.json({ enrollments: await enrollments.list() });
-  } catch (err) {
-    console.error("[admin] enrollments.list failed:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// email-settings GET
+// --- Email Settings ---
 adminRouter.get("/email-settings", requireAdmin, async (_req, res) => {
   try {
     res.json({ settings: await emailSettings.get() });
@@ -101,22 +96,7 @@ adminRouter.get("/email-settings", requireAdmin, async (_req, res) => {
   }
 });
 
-// partners GET
-adminRouter.get("/partners", requireAdmin, async (_req, res) => {
-  try {
-    res.json({ partners: await partners.list() });
-  } catch (err) {
-    console.error("[admin] partners.list failed:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// --- Email Settings ---
-adminRouter.get("/email-settings", requireAdmin, (_req, res) => {
-  res.json({ settings: emailSettings.get() });
-});
-
-adminRouter.put("/email-settings", requireAdmin, (req, res) => {
+adminRouter.put("/email-settings", requireAdmin, async (req, res) => {
   const body = req.body || {};
   const patch: Record<string, unknown> = {};
   const allowed = [
@@ -130,14 +110,14 @@ adminRouter.put("/email-settings", requireAdmin, (req, res) => {
       patch[key] = key === "smtp_port" ? Number(body[key]) || 587 : String(body[key]);
     }
   }
-  res.json({ ok: true, settings: emailSettings.update(patch) });
+  res.json({ ok: true, settings: await emailSettings.update(patch) });
 });
 
 adminRouter.post("/email-test", requireAdmin, async (req, res) => {
   const { to } = req.body || {};
   if (!to) return res.status(400).json({ error: "Provide 'to' email address" });
   const nodemailer = await import("nodemailer");
-  const cfg = emailSettings.get();
+  const cfg = await emailSettings.get();
   if (!cfg.smtp_host || !cfg.smtp_user || !cfg.smtp_pass) {
     return res.status(400).json({ error: "SMTP not configured yet" });
   }
@@ -159,22 +139,22 @@ adminRouter.post("/email-test", requireAdmin, async (req, res) => {
 });
 
 // --- Mailing List ---
-adminRouter.get("/mailing-list", requireAdmin, (_req, res) => {
-  res.json({ list: mailingList.list() });
+adminRouter.get("/mailing-list", requireAdmin, async (_req, res) => {
+  res.json({ list: await mailingList.list() });
 });
 
-adminRouter.post("/mailing-list", requireAdmin, (req, res) => {
+adminRouter.post("/mailing-list", requireAdmin, async (req, res) => {
   const { email, name } = req.body || {};
   if (!email || !String(email).includes("@")) return res.status(400).json({ error: "Valid email required" });
-  const added = mailingList.add(String(email).trim(), String(name || "").trim(), "manual");
+  const added = await mailingList.add(String(email).trim(), String(name || "").trim(), "manual");
   if (!added) return res.status(409).json({ error: "Email already in list" });
   res.json({ ok: true });
 });
 
-adminRouter.delete("/mailing-list", requireAdmin, (req, res) => {
+adminRouter.delete("/mailing-list", requireAdmin, async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email required" });
-  const removed = mailingList.remove(String(email));
+  const removed = await mailingList.remove(String(email));
   if (!removed) return res.status(404).json({ error: "Email not found in list" });
   res.json({ ok: true });
 });
@@ -182,7 +162,7 @@ adminRouter.delete("/mailing-list", requireAdmin, (req, res) => {
 adminRouter.post("/mailing-list/send", requireAdmin, async (req, res) => {
   const { email, name } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email required" });
-  const cfg = emailSettings.get();
+  const cfg = await emailSettings.get();
   if (!cfg.smtp_host || !cfg.smtp_user || !cfg.smtp_pass) {
     return res.status(400).json({ error: "SMTP not configured. Go to Email Settings first." });
   }
@@ -213,24 +193,29 @@ adminRouter.post("/mailing-list/send", requireAdmin, async (req, res) => {
 });
 
 // --- Guest Lectures ---
-adminRouter.get("/guest-lectures", requireAdmin, (_req, res) => {
-  res.json({ lectures: guestLectures.list() });
+adminRouter.get("/guest-lectures", requireAdmin, async (_req, res) => {
+  res.json({ lectures: await guestLectures.list() });
 });
 
-adminRouter.delete("/guest-lectures/:id", requireAdmin, (req, res) => {
+adminRouter.delete("/guest-lectures/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
-  const ok = guestLectures.delete(id);
+  const ok = await guestLectures.delete(id);
   if (!ok) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
 });
 
 // --- OEM & Partners ---
-adminRouter.get("/partners", requireAdmin, (_req, res) => {
-  res.json({ partners: partners.list() });
+adminRouter.get("/partners", requireAdmin, async (_req, res) => {
+  try {
+    res.json({ partners: await partners.list() });
+  } catch (err) {
+    console.error("[admin] partners.list failed:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
-adminRouter.post("/partners", requireAdmin, (req, res) => {
+adminRouter.post("/partners", requireAdmin, async (req, res) => {
   const body = req.body || {};
   const name = String(body.name || "").trim();
   const category = String(body.category || "partner") as "oem" | "partner";
@@ -242,11 +227,11 @@ adminRouter.post("/partners", requireAdmin, (req, res) => {
   if (!name) return res.status(400).json({ error: "Partner name is required." });
   if (!["oem", "partner"].includes(category)) return res.status(400).json({ error: "Category must be 'oem' or 'partner'." });
 
-  const row = partners.create({ name, category, description, logo_url, website_url, display_order });
+  const row = await partners.create({ name, category, description, logo_url, website_url, display_order });
   res.status(201).json({ ok: true, partner: row });
 });
 
-adminRouter.put("/partners/:id", requireAdmin, (req, res) => {
+adminRouter.put("/partners/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
   const body = req.body || {};
@@ -257,15 +242,15 @@ adminRouter.put("/partners/:id", requireAdmin, (req, res) => {
       patch[key] = key === "display_order" ? Number(body[key]) || 99 : String(body[key]).trim();
     }
   }
-  const ok = partners.update(id, patch as Parameters<typeof partners.update>[1]);
+  const ok = await partners.update(id, patch as Parameters<typeof partners.update>[1]);
   if (!ok) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
 });
 
-adminRouter.delete("/partners/:id", requireAdmin, (req, res) => {
+adminRouter.delete("/partners/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
-  const ok = partners.delete(id);
+  const ok = await partners.delete(id);
   if (!ok) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
 });

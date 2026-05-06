@@ -14,7 +14,7 @@ const COURSES = new Set([
   "Implementation Specialist Track",
 ]);
 
-enrollRouter.post("/", (req, res) => {
+enrollRouter.post("/", async (req, res) => {
   const body = req.body || {};
 
   const name = String(body.name || "").trim();
@@ -57,7 +57,7 @@ enrollRouter.post("/", (req, res) => {
     return res.status(400).json({ error: "Phone not verified. Please complete OTP verification for your phone number." });
   }
 
-  const row = enrollments.create({
+  const row = await enrollments.create({
     name, phone, email, country, course,
     plan: null,
     notes,
