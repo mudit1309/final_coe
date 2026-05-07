@@ -80,7 +80,7 @@ process.on("unhandledRejection", (reason) => {
   console.error("[fatal] Unhandled rejection:", reason);
 });
 
-if (!process.env.NETLIFY) {
+if (require.main === module) {
   const PORT = Number(process.env.PORT) || 3001;
   const clientDist = path.resolve(__dirname, "..", "..", "client", "dist");
   if (fs.existsSync(clientDist)) {
